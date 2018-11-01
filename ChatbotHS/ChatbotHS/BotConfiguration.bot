@@ -8,6 +8,15 @@
       "appId": "",
       "appPassword": "",
       "id": "1"
+    },
+    {
+      "type": "luis",
+      "name": "ChatBotHS",
+      "AppId": "0dbe4190-91aa-4a1c-805d-830b8bde8858",
+      "SubscriptionKey": "5e37061632e7468e85b0023fd323d679",
+      "AuthoringKey": "5e37061632e7468e85b0023fd323d679",
+      "GetEndpoint": "https://westus.api.cognitive.microsoft.com/",
+      "Region": "westus"
     }
   ],
   "padlock": "",

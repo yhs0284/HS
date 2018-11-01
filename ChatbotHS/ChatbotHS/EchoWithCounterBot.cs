@@ -22,6 +22,7 @@ namespace ChatbotHS
     /// <seealso cref="https://docs.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-2.1"/>
     public class EchoWithCounterBot : IBot
     {
+        public static readonly string LuisKey = "EchoWithCounterBot";
 
         private const string WelcomeMessage = @"안녕하세요. 청소년 자살예방을 위한 챗봇 길그리미입니다.";
 
@@ -32,6 +33,9 @@ namespace ChatbotHS
         // The bot state accessor object. Use this to access specific state properties.
         private readonly EchoBotAccessors _accessors;
 
+        // Services configured from the ".bot" file.
+        // private readonly BotServices _services;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="EchoWithCounterBot"/> class.
         /// </summary>
@@ -41,6 +45,12 @@ namespace ChatbotHS
         public EchoWithCounterBot(EchoBotAccessors accessors)
         {
             _accessors = accessors ?? throw new System.ArgumentNullException("accessor can't be null");
+            /*_services = services ?? throw new System.ArgumentNullException(nameof(services));
+            if (!_services.LuisServices.ContainsKey(LuisKey))
+            {
+                throw new System.ArgumentException($"Invalid configuration. Please check your '.bot' file for a LUIS service named '{LuisKey}'.");
+            }
+            */
         }
 
         /// <summary>
@@ -61,48 +71,74 @@ namespace ChatbotHS
             // use state accessor to extract the didBotWelcomeUser flag
             var didBotWelcomeUser = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
 
+            // 유저가 대답하기 전 먼저 환영 문구와 봇 관련 정보를 출력한다.
+            if (didBotWelcomeUser.DidBotWelcomeUser == false)
+            {
+                didBotWelcomeUser.DidBotWelcomeUser = true;
+
+                // Update user state flag to reflect bot handled first user interaction.
+                await _accessors.CounterState.SetAsync(turnContext, didBotWelcomeUser);
+                await _accessors.ConversationState.SaveChangesAsync(turnContext);
+
+                await turnContext.SendActivityAsync(WelcomeMessage, cancellationToken: cancellationToken);
+                await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
+                await turnContext.SendActivityAsync(InfoMessage, cancellationToken: cancellationToken);
+
+            }
+
             // Handle Message activity type, which is the main activity type for shown within a conversational interface
             // Message activities may contain text, speech, interactive cards, and binary or unknown attachments.
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
-                // proactively send a welcome message to a personal chat the first time
-                // (and only the first time) a userinitiates a personal chat with your bot
-                if (didBotWelcomeUser.DidBotWelcomeUser == false)
+
+                // This example hardcodes specific utterances. You should use LUIS or QnA for more advance language understanding.
+
+                var text = turnContext.Activity.Text.ToLowerInvariant();
+                switch (text)
                 {
-                    didBotWelcomeUser.DidBotWelcomeUser = true;
+                    case "도와줘":
+                        await turnContext.SendActivityAsync($"한국청소년상담센터로 바로 연결해드리겠습니다.");
+                        break;
+                    case "아니요":
+                    case "아니":
+                        await turnContext.SendActivityAsync($"동의해주시지 않는다면 정밀한 진행이 어려울 수 있어요. 정말로 동의해주지 않으실건가요?");
+                        break;
+                    case "네":
+                    case "알았어":
+                        await turnContext.SendActivityAsync($"고마워요. 그럼 본격적인 상담을 진행해볼게요.");
+                        break;
+                    default:
+                        await turnContext.SendActivityAsync($"좋은 대답을 기다리고 있어요:)", cancellationToken: cancellationToken);
+                        break;
+                }
 
-                    // Update user state flag to reflect bot handled first user interaction.
-                    await _accessors.CounterState.SetAsync(turnContext, didBotWelcomeUser);
-                    await _accessors.ConversationState.SaveChangesAsync(turnContext);
-
-                    await turnContext.SendActivityAsync(WelcomeMessage, cancellationToken: cancellationToken);
-                    await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
-                    await turnContext.SendActivityAsync(InfoMessage, cancellationToken: cancellationToken);
+                /*
+                // Check LUIS model
+                var recognizerResult = await _services.LuisServices[LuisKey].RecognizeAsync(turnContext, cancellationToken);
+                var topIntent = recognizerResult?.GetTopScoringIntent();
+                if (topIntent != null && topIntent.HasValue && topIntent.Value.intent != "None")
+                {
+                    await turnContext.SendActivityAsync($"==>LUIS Top Scoring Intent: {topIntent.Value.intent}, Score: {topIntent.Value.score}\n");
                 }
                 else
                 {
-                    // This example hardcodes specific utterances. You should use LUIS or QnA for more advance language understanding.
-                    var text = turnContext.Activity.Text.ToLowerInvariant();
-                    switch (text)
-                    {
-                        case "도와줘":
-                            await turnContext.SendActivityAsync($"한국청소년상담센터로 바로 연결해드리겠습니다.");
-                            break;
-                        case "아니요":
-                        case "아니":
-                            await turnContext.SendActivityAsync($"동의해주시지 않는다면 정밀한 진행이 어려울 수 있어요. 정말로 동의해주지 않으실건가요?");
-                            break;
-                        case "네":
-                        case "알았어":
-                            await turnContext.SendActivityAsync($"고마워요. 그럼 본격적인 상담을 진행해볼게요.");
-                            break;
-                        default:
-                            await turnContext.SendActivityAsync($"좋은 대답을 기다리고 있어요:)", cancellationToken: cancellationToken);
-                            break;
-                    }
+                    var msg = @"No LUIS intents were found.
+                        This sample is about identifying two user intents:
+                        'Calendar.Add'
+                        'Calendar.Find'
+                        Try typing 'Add Event' or 'Show me tomorrow'.";
+                    await turnContext.SendActivityAsync(msg);
                 }
             }
         }
+        else
+        {
+            await turnContext.SendActivityAsync($"{turnContext.Activity.Type} event detected", cancellationToken: cancellationToken);
+        }
+        */
+
+            }
+        }
     }
-}
+}   

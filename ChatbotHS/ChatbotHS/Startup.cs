@@ -63,6 +63,12 @@ namespace ChatbotHS
                 var botConfig = BotConfiguration.Load(botFilePath ?? @".\BotConfiguration.bot", secretKey);
                 services.AddSingleton(sp => botConfig ?? throw new InvalidOperationException($"The .bot config file could not be loaded. ({botConfig})"));
 
+                // Initialize Bot Connected Services clients.
+                var connectedServices = new BotServices(botConfig);
+                services.AddSingleton(sp => connectedServices);
+
+                services.AddSingleton(sp => botConfig);
+
                 // Retrieve current endpoint.
                 var environment = _isProduction ? "production" : "development";
                 var service = botConfig.Services.Where(s => s.Type == "endpoint" && s.Name == environment).FirstOrDefault();
@@ -137,6 +143,8 @@ namespace ChatbotHS
 
                 return accessors;
             });
+
+
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
