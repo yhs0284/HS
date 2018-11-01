@@ -3,6 +3,7 @@
 
 using System;
 using Microsoft.Bot.Builder;
+using Microsoft.Bot.Builder.Dialogs;
 
 namespace ChatbotHS
 {
@@ -44,5 +45,7 @@ namespace ChatbotHS
         /// </summary>
         /// <value>The <see cref="ConversationState"/> object.</value>
         public ConversationState ConversationState { get; }
+
+        public IStatePropertyAccessor<DialogState> ConversationDialogState { get; set; }
     }
 }

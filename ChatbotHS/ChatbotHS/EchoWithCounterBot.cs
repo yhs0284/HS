@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.AI.Luis;
+using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Schema;
 using Microsoft.Extensions.Logging;
 
@@ -24,6 +25,7 @@ namespace ChatbotHS
     public class EchoWithCounterBot : IBot
     {
         private LuisRecognizer Recognizer { get; } = null;
+        private DialogSet _dialogs;
 
         private const string WelcomeMessage = @"안녕하세요. 청소년 자살예방을 위한 챗봇 길그리미입니다.";
         private const string InfoMessage = @"상담을 시작하기에 앞서 상담과정에서 필요하다면 전화 혹은 문자 연결이 있을 수도 있어요. 동의해주실수 있나요?";
@@ -44,11 +46,21 @@ namespace ChatbotHS
         public EchoWithCounterBot(EchoBotAccessors accessors, LuisRecognizer luis)
         {
             _accessors = accessors ?? throw new System.ArgumentNullException("accessor can't be null");
-
-            //The incoming luis variable is the LUIS Recognizer we added above.
-            this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
             
-       
+            // DialogState accessor
+            _dialogs = new DialogSet(accessors.ConversationDialogState);
+            // This array defines how the Waterfall will execute
+            var waterfallSteps = new WaterfallStep[]
+           {
+                NameStepAsync,
+                NameConfirmStepAsync,
+           };
+            // Add named dialogs to the DialogSet. These names are saved in the dialog state.
+            _dialogs.Add(new WaterfallDialog("details", waterfallSteps));
+            _dialogs.Add(new TextPrompt("name"));
+
+            // The incoming luis variable is the LUIS Recognizer we added above.
+            this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));   
         }
 
         /// <summary>
@@ -98,16 +110,16 @@ namespace ChatbotHS
                 // Get the IntentScore as a double
                 double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
                 // Only proceed with LUIS if there is an Intent
-                // and the score for the intent is greater than 90
-                if (strIntent != "" && (dblIntentScore > 0.90))
+                // and the score for the intent is greater than 70
+                if (strIntent != "" && (dblIntentScore > 0.70))
                 {
                     switch (strIntent)
                     {
-                        case "None":
-                            await turnContext.SendActivityAsync("Sorry, I don't understand");
+                        case "Panswer":
+                            await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
                             break;
-                        case "Priority_Danger":
-                            await turnContext.SendActivityAsync("바로 도움을 드릴 수 있는 번호로 연결해드리겠습니다.");
+                        case "Nanswer":
+                            await turnContext.SendActivityAsync("동의해주시지 않으면 진행하기가 어려워요:(");
                             break;
                         default:
                             // Received an intent we didn't expect, so send its name and score.
@@ -116,40 +128,39 @@ namespace ChatbotHS
                             break;
                     }
                 }
-                /*
                 else
                 {
-
-                    // This example hardcodes specific utterances. You should use LUIS or QnA for more advance language understanding.
-                    var text = turnContext.Activity.Text.ToLowerInvariant();
-                    switch (text)
+                    // Run the DialogSet - let the framework identify the current state of the dialog from
+                    // the dialog stack and figure out what (if any) is the active dialog.
+                    var dialogContext = await _dialogs.CreateContextAsync(turnContext, cancellationToken);
+                    var results = await dialogContext.ContinueDialogAsync(cancellationToken);
+                    // If the DialogTurnStatus is Empty we should start a new dialog.
+                    if (results.Status == DialogTurnStatus.Empty)
                     {
-                        case "도와줘":
-                            await turnContext.SendActivityAsync($"한국청소년상담센터로 바로 연결해드리겠습니다.");
-                            break;
-                        case "아니요":
-                        case "아니":
-                            await turnContext.SendActivityAsync($"동의해주시지 않는다면 정밀한 진행이 어려울 수 있어요. 정말로 동의해주지 않으실건가요?");
-                            break;
-                        case "네":
-                        case "알았어":
-                            await turnContext.SendActivityAsync($"고마워요. 그럼 본격적인 상담을 진행해볼게요.");
-                            break;
-                        default:
-                            await turnContext.SendActivityAsync($"좋은 대답을 기다리고 있어요:)", cancellationToken: cancellationToken);
-                            break;
+                        await dialogContext.BeginDialogAsync("details", null, cancellationToken);
                     }
-
-
-
                 }
-                */
-
-
-
-
-
             }
+        }
+
+        private static async Task<DialogTurnResult> NameStepAsync(
+            WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Running a prompt here means the next WaterfallStep will be 
+            // run when the users response is received.
+            return await stepContext.PromptAsync(
+                "name", new PromptOptions { Prompt = MessageFactory.Text("What is your name?") }
+                , cancellationToken);
+        }
+        private async Task<DialogTurnResult> NameConfirmStepAsync(
+            WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // We can send messages to the user at any point in the WaterfallStep.
+            await stepContext.Context.SendActivityAsync(
+                MessageFactory.Text($"Hello {stepContext.Result}!"), cancellationToken);
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog, 
+            // here it is the end.
+            return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
     }
 }   
