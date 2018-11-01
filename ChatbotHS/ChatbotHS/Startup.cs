@@ -6,6 +6,7 @@ using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Bot.Builder;
+using Microsoft.Bot.Builder.AI.Luis;
 using Microsoft.Bot.Builder.Integration;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
 using Microsoft.Bot.Configuration;
@@ -62,12 +63,6 @@ namespace ChatbotHS
                 // Loads .bot configuration file and adds a singleton that your Bot can access through dependency injection.
                 var botConfig = BotConfiguration.Load(botFilePath ?? @".\BotConfiguration.bot", secretKey);
                 services.AddSingleton(sp => botConfig ?? throw new InvalidOperationException($"The .bot config file could not be loaded. ({botConfig})"));
-
-                // Initialize Bot Connected Services clients.
-                var connectedServices = new BotServices(botConfig);
-                services.AddSingleton(sp => connectedServices);
-
-                services.AddSingleton(sp => botConfig);
 
                 // Retrieve current endpoint.
                 var environment = _isProduction ? "production" : "development";
@@ -142,6 +137,25 @@ namespace ChatbotHS
                 };
 
                 return accessors;
+            });
+
+            // Create and register a LUIS recognizer.
+            services.AddSingleton(sp =>
+            {
+                // Set up Luis
+                var luisApp = new LuisApplication(
+                    applicationId: "0dbe4190-91aa-4a1c-805d-830b8bde8858",
+                    endpointKey: "5e37061632e7468e85b0023fd323d679",
+                    endpoint: "https://westus.api.cognitive.microsoft.com/");
+                // Specify LUIS options. These may vary for your bot.
+                var luisPredictionOptions = new LuisPredictionOptions
+                {
+                    IncludeAllIntents = true,
+                };
+                return new LuisRecognizer(
+                    application: luisApp,
+                    predictionOptions: luisPredictionOptions,
+                    includeApiResults: true);
             });
 
 
