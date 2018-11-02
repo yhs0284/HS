@@ -107,14 +107,14 @@ namespace ChatbotHS
                 throw new System.ArgumentNullException(nameof(turnContext));
             }
 
+            // use state accessor to extract the didBotWelcomeUser flag
+            var didBotGetAgreement = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
+
             // Handle Message activity type, which is the main activity type for shown within a conversational interface
             // Message activities may contain text, speech, interactive cards, and binary or unknown attachments.
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
-                // use state accessor to extract the didBotWelcomeUser flag
-                var didBotGetAgreement = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
-
                 // 유저가 대답하기 전 먼저 환영 문구와 봇 관련 정보를 출력한다.
                 if (didBotGetAgreement.DidBotGetAgreement == false)
                 {
@@ -141,7 +141,8 @@ namespace ChatbotHS
                             "다시 시작해주세요.");
                     }
                 }
-                else
+
+                if (didBotGetAgreement.DidBotGetAgreement == true)
                 {
                     // Get the conversationstate from the turn context
                     var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
