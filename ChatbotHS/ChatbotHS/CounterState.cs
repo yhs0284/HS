@@ -16,6 +16,8 @@ namespace ChatbotHS
         /// <value>The user has been welcomed in the conversation.</value>
         public bool DidBotWelcomeUser { get; set; } = false;
 
+        public bool DidBotGetAgreement { get; set; } = false;
+
 
         public int TurnCount { get; set; } = 0;
 

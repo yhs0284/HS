@@ -54,10 +54,15 @@ namespace ChatbotHS
            {
                 NameStepAsync,
                 NameConfirmStepAsync,
+                AgeStepAsync,
+                ConfirmStepAsync,
+                SummaryStepAsync,
            };
             // Add named dialogs to the DialogSet. These names are saved in the dialog state.
             _dialogs.Add(new WaterfallDialog("details", waterfallSteps));
             _dialogs.Add(new TextPrompt("name"));
+            _dialogs.Add(new NumberPrompt<int>("age"));
+            _dialogs.Add(new ConfirmPrompt("confirm"));
 
             // The incoming luis variable is the LUIS Recognizer we added above.
             this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
@@ -78,6 +83,7 @@ namespace ChatbotHS
         /// <seealso cref="IMiddleware"/>
         public async Task OnTurnAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
         {
+
             // use state accessor to extract the didBotWelcomeUser flag
             var didBotWelcomeUser = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
 
@@ -96,66 +102,78 @@ namespace ChatbotHS
 
             }
 
+            if (turnContext == null)
+            {
+                throw new System.ArgumentNullException(nameof(turnContext));
+            }
+
             // Handle Message activity type, which is the main activity type for shown within a conversational interface
             // Message activities may contain text, speech, interactive cards, and binary or unknown attachments.
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
+                // use state accessor to extract the didBotWelcomeUser flag
+                var didBotGetAgreement = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
 
-                // Check LUIS model
-                var recognizerResult = await this.Recognizer.RecognizeAsync(turnContext, cancellationToken);
-                var topIntent = recognizerResult?.GetTopScoringIntent();
-
-                // Get the IntentScore as a string
-                string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
-                // Get the IntentScore as a double
-                double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
-
-                // Only proceed with LUIS if there is an Intent
-                // and the score for the intent is greater than 70
-                if (strIntent == "Panswer" && (dblIntentScore > 0.70))
+                // 유저가 대답하기 전 먼저 환영 문구와 봇 관련 정보를 출력한다.
+                if (didBotGetAgreement.DidBotGetAgreement == false)
                 {
-                    await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
-                    await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
-                }
-                else if (strIntent == "Nanswer" && (dblIntentScore > 0.70))
-                {
-                    await turnContext.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" +
-                        "다시 한 번만 생각해주세요.");
+                    // Check LUIS model
+                    var recognizerResult = await this.Recognizer.RecognizeAsync(turnContext, cancellationToken);
+                    var topIntent = recognizerResult?.GetTopScoringIntent();
 
-                }
-            
-                
+                    // Get the IntentScore as a string
+                    string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+                    // Get the IntentScore as a double
+                    double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
 
-                // Get the conversationstate from the turn context
-                var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
-                // Get the user state from the turn context.
-                var user = await _accessors.UserProfile.GetAsync(turnContext, () => new UserProfile());
-                if (user.Name == null)
-                {
-                    // Run the DialogSet - let the framework identify the current state of the dialog from
-                    // the dialog stack and figure out what (if any) is the active dialog.
-                    var dialogContext = await _dialogs.CreateContextAsync(turnContext, cancellationToken);
-                    var results = await dialogContext.ContinueDialogAsync(cancellationToken);
-                    // If the DialogTurnStatus is Empty we should start a new dialog.
-                    if (results.Status == DialogTurnStatus.Empty)
+                    // Only proceed with LUIS if there is an Intent
+                    // and the score for the intent is greater than 70
+                    if (strIntent == "Panswer" && (dblIntentScore > 0.70))
                     {
-                        await dialogContext.BeginDialogAsync("details", null, cancellationToken);
+                        didBotGetAgreement.DidBotGetAgreement = true;
+                        await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
+                        await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
+                    }
+                    else
+                    {
+                        await turnContext.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" +
+                            "다시 시작해주세요.");
                     }
                 }
-                // Set the property using the accessor.
-                await _accessors.CounterState.SetAsync(turnContext, state);
+                else
+                {
+                    // Get the conversationstate from the turn context
+                    var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
+                    // Get the user state from the turn context.
+                    var user = await _accessors.UserProfile.GetAsync(turnContext, () => new UserProfile());
+                    if (user.Name == null)
+                    {
+                        // Run the DialogSet - let the framework identify the current state of the dialog from
+                        // the dialog stack and figure out what (if any) is the active dialog.
+                        var dialogContext = await _dialogs.CreateContextAsync(turnContext, cancellationToken);
+                        var results = await dialogContext.ContinueDialogAsync(cancellationToken);
+                        // If the DialogTurnStatus is Empty we should start a new dialog.
+                        if (results.Status == DialogTurnStatus.Empty)
+                        {
+                            await dialogContext.BeginDialogAsync("details", null, cancellationToken);
+                        }
+                    }
+                    // Set the property using the accessor.
+                    await _accessors.CounterState.SetAsync(turnContext, state);
 
-                // Save the new turn count into the conversation state.
-                await _accessors.ConversationState.SaveChangesAsync(turnContext);
-                // Save the user profile updates into the user state.
-                await _accessors.UserState.SaveChangesAsync(turnContext, false, cancellationToken);
+                    // Save the new turn count into the conversation state.
+                    await _accessors.ConversationState.SaveChangesAsync(turnContext);
+                    // Save the user profile updates into the user state.
+                    await _accessors.UserState.SaveChangesAsync(turnContext, false, cancellationToken);
+                }
             }
         }
 
-    
 
-        private static async Task<DialogTurnResult> NameStepAsync(
+ 
+
+        private async Task<DialogTurnResult> NameStepAsync(
             WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // Running a prompt here means the next WaterfallStep will be 
@@ -164,22 +182,113 @@ namespace ChatbotHS
                 "name", new PromptOptions { Prompt = MessageFactory.Text("친구의 이름은 뭔가요?") }
                 , cancellationToken);
         }
-        private async Task<DialogTurnResult> NameConfirmStepAsync(
-           WaterfallStepContext stepContext, CancellationToken cancellationToken)
+
+        /// <summary>
+        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
+        /// </summary>
+        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
+        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
+        private async Task<DialogTurnResult> NameConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // We can send messages to the user at any point in the WaterfallStep.
-            await stepContext.Context.SendActivityAsync(
-                MessageFactory.Text($"안녕하세요, {stepContext.Result}! 반가워요."), cancellationToken);
-            await stepContext.Context.SendActivityAsync(
-                MessageFactory.Text($"요즘 기분은 어때요?"), cancellationToken);
             // Get the current profile object from user state.
-            var userProfile = await _accessors.UserProfile.GetAsync(
-                stepContext.Context, () => new UserProfile(), cancellationToken);
+            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+
             // Update the profile.
             userProfile.Name = (string)stepContext.Result;
-            // WaterfallStep always finishes with the end of the Waterfall or with another dialog, 
-            // here it is the end.
+
+            // We can send messages to the user at any point in the WaterfallStep.
+            await stepContext.Context.SendActivityAsync(MessageFactory.Text($"Thanks {stepContext.Result}."), cancellationToken);
+
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
+            return await stepContext.PromptAsync("confirm", new PromptOptions { Prompt = MessageFactory.Text("Would you like to give your age?") }, cancellationToken);
+        }
+
+        /// <summary>
+        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
+        /// </summary>
+        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
+        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
+        private async Task<DialogTurnResult> AgeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            if ((bool)stepContext.Result)
+            {
+                // User said "yes" so we will be prompting for the age.
+
+                // Get the current profile object from user state.
+                var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is a Prompt Dialog.
+                return await stepContext.PromptAsync("age", new PromptOptions { Prompt = MessageFactory.Text("Please enter your age.") }, cancellationToken);
+            }
+            else
+            {
+                // User said "no" so we will skip the next step. Give -1 as the age.
+                return await stepContext.NextAsync(-1, cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
+        /// </summary>
+        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
+        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
+        private async Task<DialogTurnResult> ConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Get the current profile object from user state.
+            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+
+            // Update the profile.
+            userProfile.Age = (int)stepContext.Result;
+
+            // We can send messages to the user at any point in the WaterfallStep.
+            if (userProfile.Age == -1)
+            {
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"No age given."), cancellationToken);
+            }
+            else
+            {
+                // We can send messages to the user at any point in the WaterfallStep.
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"I have your age as {userProfile.Age}."), cancellationToken);
+            }
+
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is a Prompt Dialog.
+            return await stepContext.PromptAsync("confirm", new PromptOptions { Prompt = MessageFactory.Text("Is this ok?") }, cancellationToken);
+        }
+
+        /// <summary>
+        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
+        /// </summary>
+        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
+        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
+        private async Task<DialogTurnResult> SummaryStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            if ((bool)stepContext.Result)
+            {
+                // Get the current profile object from user state.
+                var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+
+                // We can send messages to the user at any point in the WaterfallStep.
+                if (userProfile.Age == -1)
+                {
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"I have your name as {userProfile.Name}."), cancellationToken);
+                }
+                else
+                {
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"I have your name as {userProfile.Name} and age as {userProfile.Age}."), cancellationToken);
+                }
+            }
+            else
+            {
+                // We can send messages to the user at any point in the WaterfallStep.
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text("Thanks. Your profile will not be kept."), cancellationToken);
+            }
+
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
             return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
-    }   
-}   
+    }
+}

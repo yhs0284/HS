@@ -50,6 +50,9 @@ namespace ChatbotHS
         public IStatePropertyAccessor<DialogState> ConversationDialogState { get; set; }
 
         public IStatePropertyAccessor<UserProfile> UserProfile { get; set; }
+
+        
+
         public UserState UserState { get; }
     }
 }
