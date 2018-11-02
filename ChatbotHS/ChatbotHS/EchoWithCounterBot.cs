@@ -101,44 +101,31 @@ namespace ChatbotHS
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
+
                 // Check LUIS model
                 var recognizerResult = await this.Recognizer.RecognizeAsync(turnContext, cancellationToken);
                 var topIntent = recognizerResult?.GetTopScoringIntent();
 
-                // Get user agreement
-                var agreedbyUser = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
                 // Get the IntentScore as a string
                 string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
                 // Get the IntentScore as a double
                 double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
+
                 // Only proceed with LUIS if there is an Intent
                 // and the score for the intent is greater than 70
-                while (agreedbyUser.AgreedbyUser == false)
+                if (strIntent == "Panswer" && (dblIntentScore > 0.70))
                 {
-                    if (strIntent != "" && (dblIntentScore > 0.70))
-                    {
-                        switch (strIntent)
-                        {
-                            case "Panswer":
-                                agreedbyUser.AgreedbyUser = true;
-                                await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
-                                await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
-                                break;
-                            case "Nanswer":
-                                await turnContext.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" +
-                                    "다시 한 번만 생각해주세요.");
-                                break;
-                            default:
-                                await turnContext.SendActivityAsync("정확한 의견을 표현해주지 않으면 더 이상 상담 진행이 어려워요:(");
-                                break;
-                        }
-                    }
-                    else if ((dblIntentScore <= 0.70) || (strIntent == ""))
-                    {
-                        await turnContext.SendActivityAsync("정확한 의견을 표현해주지 않으면 더 이상 상담 진행이 어려워요:(");
-                    }
+                    await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
+                    await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
+                }
+                else if (strIntent == "Nanswer" && (dblIntentScore > 0.70))
+                {
+                    await turnContext.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" +
+                        "다시 한 번만 생각해주세요.");
+
                 }
             
+                
 
                 // Get the conversationstate from the turn context
                 var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
@@ -165,6 +152,7 @@ namespace ChatbotHS
                 await _accessors.UserState.SaveChangesAsync(turnContext, false, cancellationToken);
             }
         }
+
     
 
         private static async Task<DialogTurnResult> NameStepAsync(
