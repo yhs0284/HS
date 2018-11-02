@@ -20,9 +20,10 @@ namespace ChatbotHS
         /// Contains the <see cref="ConversationState"/> and associated <see cref="IStatePropertyAccessor{T}"/>.
         /// </summary>
         /// <param name="conversationState">The state object that stores the counter.</param>
-        public EchoBotAccessors(ConversationState conversationState)
+        public EchoBotAccessors(ConversationState conversationState, UserState userState)
         {
             ConversationState = conversationState ?? throw new ArgumentNullException(nameof(conversationState));
+            UserState = userState ?? throw new ArgumentNullException(nameof(userState));
         }
 
         /// <summary>
@@ -47,5 +48,8 @@ namespace ChatbotHS
         public ConversationState ConversationState { get; }
 
         public IStatePropertyAccessor<DialogState> ConversationDialogState { get; set; }
+
+        public IStatePropertyAccessor<UserProfile> UserProfile { get; set; }
+        public UserState UserState { get; }
     }
 }

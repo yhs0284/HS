@@ -112,6 +112,11 @@ namespace ChatbotHS
                 var conversationState = new ConversationState(dataStore);
 
                 options.State.Add(conversationState);
+
+                // Create and add user state.
+                var userState = new UserState(dataStore);
+                options.State.Add(userState);
+
             });
 
             // Create and register state accesssors.
@@ -124,6 +129,13 @@ namespace ChatbotHS
                     throw new InvalidOperationException("BotFrameworkOptions must be configured prior to setting up the state accessors");
                 }
 
+                var userState = options.State.OfType<UserState>().FirstOrDefault();
+                if (userState == null)
+                {
+                    throw new InvalidOperationException(
+                        "UserState must be defined and added before adding user-scoped state accessors.");
+                }
+
                 var conversationState = options.State.OfType<ConversationState>().FirstOrDefault();
                 if (conversationState == null)
                 {
@@ -132,10 +144,11 @@ namespace ChatbotHS
 
                 // Create the custom state accessor.
                 // State accessors enable other components to read and write individual properties of state.
-                var accessors = new EchoBotAccessors(conversationState)
+                var accessors = new EchoBotAccessors(conversationState, userState)
                 {
                     CounterState = conversationState.CreateProperty<CounterState>(EchoBotAccessors.CounterStateName),
                     ConversationDialogState = conversationState.CreateProperty<DialogState>("DialogState"),
+                    UserProfile = userState.CreateProperty<UserProfile>("UserProfile"),
                 };
 
                 return accessors;

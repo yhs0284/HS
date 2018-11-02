@@ -46,7 +46,7 @@ namespace ChatbotHS
         public EchoWithCounterBot(EchoBotAccessors accessors, LuisRecognizer luis)
         {
             _accessors = accessors ?? throw new System.ArgumentNullException("accessor can't be null");
-            
+
             // DialogState accessor
             _dialogs = new DialogSet(accessors.ConversationDialogState);
             // This array defines how the Waterfall will execute
@@ -60,7 +60,7 @@ namespace ChatbotHS
             _dialogs.Add(new TextPrompt("name"));
 
             // The incoming luis variable is the LUIS Recognizer we added above.
-            this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));   
+            this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
         }
 
         /// <summary>
@@ -105,30 +105,46 @@ namespace ChatbotHS
                 var recognizerResult = await this.Recognizer.RecognizeAsync(turnContext, cancellationToken);
                 var topIntent = recognizerResult?.GetTopScoringIntent();
 
+                // Get user agreement
+                var agreedbyUser = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
                 // Get the IntentScore as a string
                 string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
                 // Get the IntentScore as a double
                 double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
                 // Only proceed with LUIS if there is an Intent
                 // and the score for the intent is greater than 70
-                if (strIntent != "" && (dblIntentScore > 0.70))
+                while (agreedbyUser.AgreedbyUser == false)
                 {
-                    switch (strIntent)
+                    if (strIntent != "" && (dblIntentScore > 0.70))
                     {
-                        case "Panswer":
-                            await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
-                            break;
-                        case "Nanswer":
-                            await turnContext.SendActivityAsync("동의해주시지 않으면 진행하기가 어려워요:(");
-                            break;
-                        default:
-                            // Received an intent we didn't expect, so send its name and score.
-                            await turnContext.SendActivityAsync(
-                                $"Intent: {topIntent.Value.intent} ({topIntent.Value.score}).");
-                            break;
+                        switch (strIntent)
+                        {
+                            case "Panswer":
+                                agreedbyUser.AgreedbyUser = true;
+                                await turnContext.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.");
+                                await turnContext.SendActivityAsync(PatternMessage, cancellationToken: cancellationToken);
+                                break;
+                            case "Nanswer":
+                                await turnContext.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" +
+                                    "다시 한 번만 생각해주세요.");
+                                break;
+                            default:
+                                await turnContext.SendActivityAsync("정확한 의견을 표현해주지 않으면 더 이상 상담 진행이 어려워요:(");
+                                break;
+                        }
+                    }
+                    else if ((dblIntentScore <= 0.70) || (strIntent == ""))
+                    {
+                        await turnContext.SendActivityAsync("정확한 의견을 표현해주지 않으면 더 이상 상담 진행이 어려워요:(");
                     }
                 }
-                else
+            
+
+                // Get the conversationstate from the turn context
+                var state = await _accessors.CounterState.GetAsync(turnContext, () => new CounterState());
+                // Get the user state from the turn context.
+                var user = await _accessors.UserProfile.GetAsync(turnContext, () => new UserProfile());
+                if (user.Name == null)
                 {
                     // Run the DialogSet - let the framework identify the current state of the dialog from
                     // the dialog stack and figure out what (if any) is the active dialog.
@@ -140,8 +156,16 @@ namespace ChatbotHS
                         await dialogContext.BeginDialogAsync("details", null, cancellationToken);
                     }
                 }
+                // Set the property using the accessor.
+                await _accessors.CounterState.SetAsync(turnContext, state);
+
+                // Save the new turn count into the conversation state.
+                await _accessors.ConversationState.SaveChangesAsync(turnContext);
+                // Save the user profile updates into the user state.
+                await _accessors.UserState.SaveChangesAsync(turnContext, false, cancellationToken);
             }
         }
+    
 
         private static async Task<DialogTurnResult> NameStepAsync(
             WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -149,18 +173,25 @@ namespace ChatbotHS
             // Running a prompt here means the next WaterfallStep will be 
             // run when the users response is received.
             return await stepContext.PromptAsync(
-                "name", new PromptOptions { Prompt = MessageFactory.Text("What is your name?") }
+                "name", new PromptOptions { Prompt = MessageFactory.Text("친구의 이름은 뭔가요?") }
                 , cancellationToken);
         }
         private async Task<DialogTurnResult> NameConfirmStepAsync(
-            WaterfallStepContext stepContext, CancellationToken cancellationToken)
+           WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // We can send messages to the user at any point in the WaterfallStep.
             await stepContext.Context.SendActivityAsync(
-                MessageFactory.Text($"Hello {stepContext.Result}!"), cancellationToken);
+                MessageFactory.Text($"안녕하세요, {stepContext.Result}! 반가워요."), cancellationToken);
+            await stepContext.Context.SendActivityAsync(
+                MessageFactory.Text($"요즘 기분은 어때요?"), cancellationToken);
+            // Get the current profile object from user state.
+            var userProfile = await _accessors.UserProfile.GetAsync(
+                stepContext.Context, () => new UserProfile(), cancellationToken);
+            // Update the profile.
+            userProfile.Name = (string)stepContext.Result;
             // WaterfallStep always finishes with the end of the Waterfall or with another dialog, 
             // here it is the end.
             return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
-    }
+    }   
 }   
