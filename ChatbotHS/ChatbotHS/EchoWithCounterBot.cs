@@ -62,7 +62,8 @@ namespace ChatbotHS
             _dialogs.Add(new WaterfallDialog("details", waterfallSteps));
             _dialogs.Add(new TextPrompt("name"));
             _dialogs.Add(new NumberPrompt<int>("age"));
-            _dialogs.Add(new ConfirmPrompt("confirm"));
+            _dialogs.Add(new TextPrompt("feeling"));
+            _dialogs.Add(new TextPrompt("SuicidalThinking"));
 
             // The incoming luis variable is the LUIS Recognizer we added above.
             this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
@@ -199,10 +200,12 @@ namespace ChatbotHS
             userProfile.Name = (string)stepContext.Result;
 
             // We can send messages to the user at any point in the WaterfallStep.
-            await stepContext.Context.SendActivityAsync(MessageFactory.Text($"Thanks {stepContext.Result}."), cancellationToken);
+            await stepContext.Context.SendActivityAsync(MessageFactory.Text($"안녕하세요, {stepContext.Result}. 반가워요."), cancellationToken);
 
             // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
-            return await stepContext.PromptAsync("confirm", new PromptOptions { Prompt = MessageFactory.Text("Would you like to give your age?") }, cancellationToken);
+            return await stepContext.PromptAsync(
+                "feeling", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }
+                , cancellationToken);
         }
 
         /// <summary>
@@ -213,6 +216,39 @@ namespace ChatbotHS
         /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
         private async Task<DialogTurnResult> AgeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
+            // Check LUIS model
+            var recognizerResult = await this.Recognizer.RecognizeAsync(stepContext.Context, cancellationToken);
+            var topIntent = recognizerResult?.GetTopScoringIntent();
+
+            // Get the IntentScore as a string
+            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+            // Get the IntentScore as a double
+            double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
+
+            // Only proceed with LUIS if there is an Intent
+            // and the score for the intent is greater than 70
+            if (strIntent == "Pfeeling" && (dblIntentScore > 0.70))
+            {
+                // We can send messages to the user at any point in the WaterfallStep.
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"그랬군요. 기분이 좋아 보이네요."), cancellationToken);
+                return await stepContext.PromptAsync(
+                 "SuicidalThinking", new PromptOptions { Prompt = MessageFactory.Text($"그래도 혹시 최근에 죽고 싶다는 생각이 든 적이 있나요?") }, cancellationToken);
+            }
+            else if (strIntent == "Nfeeling" && (dblIntentScore > 0.70))
+            {
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"그랬군요. 많이 힘들었겠어요."), cancellationToken);
+                return await stepContext.PromptAsync(
+                 "SuicidalThinking", new PromptOptions { Prompt = MessageFactory.Text($"지난주나 오늘 그런 기분들 때문에 죽고 싶다는 생각이 든 적이 있나요?") }
+               , cancellationToken);
+            }
+            else
+            {
+                // User said "no" so we will skip the next step. Give -1 as the age.
+                return await stepContext.NextAsync(-1, cancellationToken);
+            }
+
+
+            /*
             if ((bool)stepContext.Result)
             {
                 // User said "yes" so we will be prompting for the age.
@@ -228,6 +264,7 @@ namespace ChatbotHS
                 // User said "no" so we will skip the next step. Give -1 as the age.
                 return await stepContext.NextAsync(-1, cancellationToken);
             }
+            */
         }
 
         /// <summary>
