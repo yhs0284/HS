@@ -51,8 +51,6 @@ namespace ChatbotHS
 
         public IStatePropertyAccessor<UserProfile> UserProfile { get; set; }
 
-        
-
         public UserState UserState { get; }
     }
 }

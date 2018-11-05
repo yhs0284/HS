@@ -33,13 +33,28 @@ namespace ChatbotHS
          "상담을 시작하기에 앞서 상담과정에서 필요하다면 전화 혹은 문자 연결이 있을 수도 있어요. 동의해주실수 있나요?";
 
         private const string WarningText = @"혹시 지금 당장 자살 충동을 느껴서 즉각적인 도움이 필요하다면 언제든지 '도와주세요'라고 입력해주세요";
+        private const string YesOrNoText = @"'네' 혹은 '아니오'로 답해주세요.";
+        private const string ErrorText = @"오류가 발생했습니다. 처음부터 다시 시작해주세요.";
+        private const string NoNeedEndingText = @"그렇다면 길그리미의 도움이 없어도 괜찮을 것 같아요. 자살 문제가 아니라 학업, 교우 관계, 가족 문제 등으로 상담하고 싶은 경우 아래 링크를 통해 청소년 사이버 상담 센터에서 도움을 받을 수 있어요.";
 
+        private int SuicidalRisk = 0;
+        
         // The bot state accessor object. Use this to access specific state properties.
         private readonly EchoBotAccessors _accessors;
 
         private LuisRecognizer Recognizer { get; } = null;
 
         private DialogSet _dialogs;
+
+        /// <summary>Contains the IDs for the other dialogs in the set.</summary>
+        private static class Dialogs
+        {
+            public const string GetAgreementAsync = "getAgreementAsync";
+            public const string AskFeelingAsync = "askFeelingAsync,";
+            public const string SuicidalThinkingAsync = "sicidalThinkingAsync";
+            public const string RelationshipAsync = "relationshipingAsync";
+        }
+
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EchoWithCounterBot"/> class.
@@ -59,55 +74,20 @@ namespace ChatbotHS
             {
                 GetAgreementAsync,
                 AskFeelingAsync,
+                SuicidalThinkingAsync,
+                RelationshipAsync,
             };
 
             // Add named dialogs to the DialogSet. These names are saved in the dialog state.
             _dialogs.Add(new WaterfallDialog("details", waterfallSteps));
             _dialogs.Add(new TextPrompt("name"));
             _dialogs.Add(new TextPrompt("feeling"));
+            _dialogs.Add(new TextPrompt("suicidalthinking"));
+            _dialogs.Add(new TextPrompt("talk"));
+            _dialogs.Add(new NumberPrompt<int>("SuicidalRisk"));
 
             // The incoming luis variable is the LUIS Recognizer we added above.
             this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
-
-            /*
-            // Rather than explicitly coding a Waterfall we have only to declare what properties we want collected.
-            // In this example we will want two text prompts to run, one for the first name and one for the last.
-            var fullname_slots = new List<SlotDetails>
-            {
-                new SlotDetails("first", "text", "Please enter your first name."),
-                new SlotDetails("last", "text", "Please enter your last name."),
-            };
-
-            // This defines an address dialog that collects street, city and zip properties.
-            var address_slots = new List<SlotDetails>
-            {
-                new SlotDetails("street", "text", "Please enter the street."),
-                new SlotDetails("city", "text", "Please enter the city."),
-                new SlotDetails("zip", "text", "Please enter the zip."),
-            };
-
-            // Dialogs can be nested and the slot filling dialog makes use of that. In this example some of the child
-            // dialogs are slot filling dialogs themselves.
-            var slots = new List<SlotDetails>
-            {
-                new SlotDetails("fullname", "fullname"),
-                new SlotDetails("age", "number", "Please enter your age."),
-                new SlotDetails("shoesize", "shoesize", "Please enter your shoe size.", "You must enter a size between 0 and 16. Half sizes are acceptable."),
-                new SlotDetails("address", "address"),
-            };
-
-            // Add the various dialogs that will be used to the DialogSet.
-            _dialogs.Add(new SlotFillingDialog("address", address_slots));
-            _dialogs.Add(new SlotFillingDialog("fullname", fullname_slots));
-            _dialogs.Add(new TextPrompt("text"));
-            _dialogs.Add(new NumberPrompt<int>("number", defaultLocale: Culture.English));
-            _dialogs.Add(new NumberPrompt<float>("shoesize", ShoeSizeAsync, defaultLocale: Culture.English));
-            _dialogs.Add(new SlotFillingDialog("slot-dialog", slots));
-
-            // Defines a simple two step Waterfall to test the slot dialog.
-            _dialogs.Add(new WaterfallDialog("root", new WaterfallStep[] { StartDialogAsync, ProcessResultsAsync }));
-            */
-
         }
 
         /// <summary>
@@ -172,6 +152,8 @@ namespace ChatbotHS
 
             // Save the dialog state into the conversation state.
             await _accessors.ConversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+            // Save the user profile updates into the user state.
+            await _accessors.UserState.SaveChangesAsync(turnContext, false, cancellationToken);
         }
 
 
@@ -261,9 +243,7 @@ namespace ChatbotHS
             var recognizerResult = await this.Recognizer.RecognizeAsync(stepContext.Context, cancellationToken).ConfigureAwait(false);
             var topIntent = recognizerResult?.GetTopScoringIntent();
             // Get the Intent as a string
-            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
-            // Update the profile
-            userProfile.FeelingIntent = strIntent;
+            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";    
             // Get the IntentScore as a double
             double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
 
@@ -271,85 +251,87 @@ namespace ChatbotHS
             // and the score for the intent is greater than 70
             if (strIntent == "Nfeeling" && (dblIntentScore > 0.70))
             {
+                userProfile.SuicidalRisk += 1;
                 await stepContext.Context.SendActivityAsync("그랬군요. 많이 힘들었겠어요.");
                 // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
-                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("최근에 그 감정들 때문에 죽고 싶었던 적은 없었나요?") }, cancellationToken);
+                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("최근에 그 감정들 때문에 죽고 싶었던 적은 있었나요?") }, cancellationToken);
             }
             else if (strIntent == "Pfeeling" && (dblIntentScore > 0.70))
             {
+                userProfile.SuicidalRisk -= 1;
                 await stepContext.Context.SendActivityAsync("기분이 좋아보여서 다행이에요:)");
                 // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
-                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("그래도 혹시 최근에 죽고 싶었던 적은 없었나요?") }, cancellationToken);
+                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("그래도 혹시 최근에 죽고 싶었던 적이 있었나요?") }, cancellationToken);
             }
             else
             {
-                return await stepContext.ReplaceDialogAsync(, null, cancellationToken);
+                await stepContext.Context.SendActivityAsync("조금 더 정확히 감정을 표현해줄 수 있을까요?");
+                return await stepContext.ReplaceDialogAsync(Dialogs.SuicidalThinkingAsync, null, cancellationToken);
             }
         }
 
-
-
-        /*
         /// <summary>
-        /// This is an example of a custom validator. This example can be directly used on a float NumberPrompt.
-        /// Returning true indicates the recognized value is acceptable. Returning false will trigger re-prompt behavior.
+        /// Get Agreement for using phone call
         /// </summary>
-        /// <param name="promptContext">The <see cref="PromptValidatorContext"/> giv     s the validator code access to the runtime, including the recognized value and the turn context.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A an asynchronous Task of bool indicating validation success as true.</returns>
-        private Task<bool> ShoeSizeAsync(PromptValidatorContext<float> promptContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> RelationshipAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var shoesize = promptContext.Recognized.Value;
+            // Get the current profile object from user state.
+            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+            // Check LUIS model
+            var recognizerResult = await this.Recognizer.RecognizeAsync(stepContext.Context, cancellationToken).ConfigureAwait(false);
+            var topIntent = recognizerResult?.GetTopScoringIntent();
+            // Get the Intent as a string
+            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+            // Get the IntentScore as a double
+            double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
 
-            // show sizes can range from 0 to 16
-            if (shoesize >= 0 && shoesize <= 16)
+            await stepContext.Context.SendActivityAsync($"{userProfile.SuicidalRisk}");
+
+            // Only proceed with LUIS if there is an Intent
+            // and the score for the intent is greater than 70
+            if (userProfile.SuicidalRisk == -1)
             {
-                // we only accept round numbers or half sizes
-                if (Math.Floor(shoesize) == shoesize || Math.Floor(shoesize * 2) == shoesize * 2)
+                if (strIntent == "Panswer" && (dblIntentScore > 0.70))
                 {
-                    // indicate success by returning the value
-                    return Task.FromResult(true);
+                    userProfile.SuicidalRisk += 2;
+                }
+                else if (strIntent == "Nanswer" && (dblIntentScore > 0.70))
+                {
+                    await stepContext.Context.SendActivityAsync(NoNeedEndingText, cancellationToken: cancellationToken);
+                    // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
+                    return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
+                }
+                else
+                {
+                    await stepContext.Context.SendActivityAsync(YesOrNoText, cancellationToken: cancellationToken);
+                    return await stepContext.ReplaceDialogAsync(Dialogs.RelationshipAsync, null, cancellationToken);
                 }
             }
-
-            return Task.FromResult(false);
-        }
-
-        /// <summary>
-        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
-        /// </summary>
-        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
-        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
-        private async Task<DialogTurnResult> StartDialogAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            // Start the child dialog. This will run the top slot dialog than will complete when all the properties are gathered.
-            return await stepContext.BeginDialogAsync("slot-dialog", null, cancellationToken);
-        }
-
-        /// <summary>
-        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
-        /// </summary>
-        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
-        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
-        private async Task<DialogTurnResult> ProcessResultsAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            // To demonstrate that the slot dialog collected all the properties we will echo them back to the user.
-            if (stepContext.Result is IDictionary<string, object> result && result.Count > 0)
+            else if (userProfile.SuicidalRisk == 1)
             {
-                var fullname = (IDictionary<string, object>)result["fullname"];
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"{fullname["first"]} {fullname["last"]}"), cancellationToken);
-
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"{result["shoesize"]}"), cancellationToken);
-
-                var address = (IDictionary<string, object>)result["address"];
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text($"{address["street"]} {address["city"]} {address["zip"]}"), cancellationToken);
+                if (strIntent == "Panswer" && (dblIntentScore > 0.70))
+                {
+                    userProfile.SuicidalRisk += 3;
+                }
+                else if (strIntent == "Nanswer" && (dblIntentScore > 0.70))
+                {
+                    userProfile.SuicidalRisk += 0;
+                }
+                else
+                {
+                    await stepContext.Context.SendActivityAsync(YesOrNoText, cancellationToken: cancellationToken);
+                    return await stepContext.ReplaceDialogAsync(Dialogs.RelationshipAsync, null, cancellationToken);
+                }
             }
-
-            // Remember to call EndAsync to indicate to the runtime that this is the end of our waterfall.
-            return await stepContext.EndDialogAsync();
+            else
+            {
+                await stepContext.Context.SendActivityAsync(ErrorText, cancellationToken: cancellationToken);
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
+                return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
+            }
+            return await stepContext.PromptAsync("talk", new PromptOptions { Prompt = MessageFactory.Text("죽고 싶은 생각이나 부정적인 감정에 관해 이야기 할 사람이 있나요? 있다면 누구와 이야기 해보았나요?") }, cancellationToken); 
         }
-        */
-    }
-}
+
+
+
+      
