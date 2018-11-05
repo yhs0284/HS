@@ -54,9 +54,22 @@ namespace ChatbotHS
             // DialogState accessor
             _dialogs = new DialogSet(accessors.ConversationDialogState);
 
+            // This array defines how the Waterfall will execute.
+            var waterfallSteps = new WaterfallStep[]
+            {
+                GetAgreementAsync,
+                AskFeelingAsync,
+            };
+
+            // Add named dialogs to the DialogSet. These names are saved in the dialog state.
+            _dialogs.Add(new WaterfallDialog("details", waterfallSteps));
+            _dialogs.Add(new TextPrompt("name"));
+            _dialogs.Add(new TextPrompt("feeling"));
+
             // The incoming luis variable is the LUIS Recognizer we added above.
             this.Recognizer = luis ?? throw new System.ArgumentNullException(nameof(luis));
 
+            /*
             // Rather than explicitly coding a Waterfall we have only to declare what properties we want collected.
             // In this example we will want two text prompts to run, one for the first name and one for the last.
             var fullname_slots = new List<SlotDetails>
@@ -93,6 +106,7 @@ namespace ChatbotHS
 
             // Defines a simple two step Waterfall to test the slot dialog.
             _dialogs.Add(new WaterfallDialog("root", new WaterfallStep[] { StartDialogAsync, ProcessResultsAsync }));
+            */
 
         }
 
@@ -116,6 +130,21 @@ namespace ChatbotHS
             // see https://aka.ms/about-bot-activity-message to learn more about the message and other activity types
             if (turnContext.Activity.Type == ActivityTypes.Message)
             {
+                // Check LUIS model
+                var recognizerResult = await this.Recognizer.RecognizeAsync(turnContext, cancellationToken);
+                var topIntent = recognizerResult?.GetTopScoringIntent();
+                // Get the Intent as a string
+                string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+                // Get the IntentScore as a double
+                double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
+
+                // Only proceed with LUIS if there is an Intent
+                // and the score for the intent is greater than 70
+                if (strIntent == "Priority_Danger" && (dblIntentScore > 0.80))
+                {
+                    await turnContext.SendActivityAsync($"지금바로 청소년긴급상담센터로 연결해드리겠습니다. 잠시만 기다려주세요.", cancellationToken: cancellationToken);
+                    // 전화연결!!!!!
+                }
                 // Run the DialogSet - let the framework identify the current state of the dialog from
                 // the dialog stack and figure out what (if any) is the active dialog.
                 var dialogContext = await _dialogs.CreateContextAsync(turnContext, cancellationToken);
@@ -124,7 +153,7 @@ namespace ChatbotHS
                 // If the DialogTurnStatus is Empty we should start a new dialog.
                 if (results.Status == DialogTurnStatus.Empty)
                 {
-                    await dialogContext.BeginDialogAsync("root", null, cancellationToken);
+                    await dialogContext.BeginDialogAsync("details", null, cancellationToken);
                 }
             }
 
@@ -144,6 +173,8 @@ namespace ChatbotHS
             // Save the dialog state into the conversation state.
             await _accessors.ConversationState.SaveChangesAsync(turnContext, false, cancellationToken);
         }
+
+
 
         /// <summary>
         /// Sends a welcome message to the user.
@@ -166,11 +197,104 @@ namespace ChatbotHS
             }
         }
 
+
+        /// <summary>
+        /// Get Agreement for using phone call
+        /// </summary>
+        private async Task<DialogTurnResult> GetAgreementAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Check LUIS model
+            var recognizerResult = await this.Recognizer.RecognizeAsync(stepContext.Context, cancellationToken).ConfigureAwait(false);
+            var topIntent = recognizerResult?.GetTopScoringIntent();
+            // Get the Intent as a string
+            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+            // Get the IntentScore as a double
+            double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
+
+            // Only proceed with LUIS if there is an Intent
+            // and the score for the intent is greater than 70
+            if (strIntent == "Panswer" && (dblIntentScore > 0.70))
+            {
+                await stepContext.Context.SendActivityAsync("고마워요. 그럼 이제부터 상담을 진행할게요.", cancellationToken: cancellationToken);
+                await stepContext.Context.SendActivityAsync(WarningText, cancellationToken: cancellationToken);
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
+                // Running a prompt here means the next WaterfallStep will be run when the users response is received.
+                return await stepContext.PromptAsync("name", new PromptOptions { Prompt = MessageFactory.Text("친구의이름은 뭔가요?") }, cancellationToken);
+            }
+            else
+            {
+                await stepContext.Context.SendActivityAsync("동의해주시지 않으면 더 이상 상담 진행이 어려워요:(" + "다시 시작해주세요.", cancellationToken: cancellationToken);
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
+                return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// One of the functions that make up the <see cref="WaterfallDialog"/>.
+        /// </summary>
+        /// <param name="stepContext">The <see cref="WaterfallStepContext"/> gives access to the executing dialog runtime.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/>.</param>
+        /// <returns>A <see cref="DialogTurnResult"/> to communicate some flow control back to the containing WaterfallDialog.</returns>
+        private async Task<DialogTurnResult> AskFeelingAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Get the current profile object from user state.
+            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+
+            // Update the profile.
+            userProfile.Name = (string)stepContext.Result;
+
+            // We can send messages to the user at any point in the WaterfallStep.
+            await stepContext.Context.SendActivityAsync(MessageFactory.Text($"안녕하세요, {stepContext.Result}. 반가워요."), cancellationToken);
+
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
+            return await stepContext.PromptAsync("feeling", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }, cancellationToken);
+        }
+
+        /// <summary>
+        /// Get Agreement for using phone call
+        /// </summary>
+        private async Task<DialogTurnResult> SuicidalThinkingAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Get the current profile object from user state.
+            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
+            // Check LUIS model
+            var recognizerResult = await this.Recognizer.RecognizeAsync(stepContext.Context, cancellationToken).ConfigureAwait(false);
+            var topIntent = recognizerResult?.GetTopScoringIntent();
+            // Get the Intent as a string
+            string strIntent = (topIntent != null) ? topIntent.Value.intent : "";
+            // Update the profile
+            userProfile.FeelingIntent = strIntent;
+            // Get the IntentScore as a double
+            double dblIntentScore = (topIntent != null) ? topIntent.Value.score : 0.0;
+
+            // Only proceed with LUIS if there is an Intent
+            // and the score for the intent is greater than 70
+            if (strIntent == "Nfeeling" && (dblIntentScore > 0.70))
+            {
+                await stepContext.Context.SendActivityAsync("그랬군요. 많이 힘들었겠어요.");
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
+                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("최근에 그 감정들 때문에 죽고 싶었던 적은 없었나요?") }, cancellationToken);
+            }
+            else if (strIntent == "Pfeeling" && (dblIntentScore > 0.70))
+            {
+                await stepContext.Context.SendActivityAsync("기분이 좋아보여서 다행이에요:)");
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
+                return await stepContext.PromptAsync("suicidalthinking", new PromptOptions { Prompt = MessageFactory.Text("그래도 혹시 최근에 죽고 싶었던 적은 없었나요?") }, cancellationToken);
+            }
+            else
+            {
+                return await stepContext.ReplaceDialogAsync(, null, cancellationToken);
+            }
+        }
+
+
+
+        /*
         /// <summary>
         /// This is an example of a custom validator. This example can be directly used on a float NumberPrompt.
         /// Returning true indicates the recognized value is acceptable. Returning false will trigger re-prompt behavior.
         /// </summary>
-        /// <param name="promptContext">The <see cref="PromptValidatorContext"/> gives the validator code access to the runtime, including the recognized value and the turn context.</param>
+        /// <param name="promptContext">The <see cref="PromptValidatorContext"/> giv     s the validator code access to the runtime, including the recognized value and the turn context.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A an asynchronous Task of bool indicating validation success as true.</returns>
         private Task<bool> ShoeSizeAsync(PromptValidatorContext<float> promptContext, CancellationToken cancellationToken)
@@ -226,5 +350,6 @@ namespace ChatbotHS
             // Remember to call EndAsync to indicate to the runtime that this is the end of our waterfall.
             return await stepContext.EndDialogAsync();
         }
+        */
     }
 }
