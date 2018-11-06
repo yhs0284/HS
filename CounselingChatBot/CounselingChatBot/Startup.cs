@@ -157,7 +157,7 @@ namespace CounselingChatBot
                 };
 
                 return accessors;
-            });
+            });          
 
             // Create and register a LUIS recognizer.
             services.AddSingleton(sp =>

@@ -9,10 +9,8 @@ namespace CounselingChatBot
     {
         public string Name { get; set; }
 
-        public string FeelingIntent { get; set; }
-
         public int SuicidalRisk = 0;
 
-        public string Frequency { get; set; }
+        public bool TrySuicide = true;
     }
 }
