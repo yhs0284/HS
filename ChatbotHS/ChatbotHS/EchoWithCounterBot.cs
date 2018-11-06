@@ -89,26 +89,14 @@ namespace ChatbotHS
                 ResultAsync,
             };
 
-            var feelingAgain_waterfallSteps = new WaterfallStep[]
-         {
-                ConfirmationAsync,
-                SuicidalThinkingAsync,
-                RelationshipAsync,
-                FrequencyofFeelingAsync,
-                TrySuicideAsync,
-                PlanSuicideAsync,
-                BeforeResultAsync,
-                ResultAsync,
-         };
-
 
 
             // Add named dialogs to the DialogSet. These names are saved in the dialog state.
             _dialogs.Add(new WaterfallDialog("details", standard_waterfallSteps));
-            _dialogs.Add(new WaterfallDialog(Dialogs.ConfirmationAsync, feelingAgain_waterfallSteps));
+           // _dialogs.Add(new WaterfallDialog(Dialogs.ConfirmationAsync, feelingAgain_waterfallSteps));
             _dialogs.Add(new TextPrompt("name"));
             _dialogs.Add(new TextPrompt("feeling"));
-            _dialogs.Add(new TextPrompt("confirmation"));
+           // _dialogs.Add(new TextPrompt("confirmation"));
             _dialogs.Add(new TextPrompt("suicidalthinking"));
             _dialogs.Add(new TextPrompt("frequency"));
             _dialogs.Add(new TextPrompt("trysuicide"));
@@ -261,15 +249,7 @@ namespace ChatbotHS
             // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
             return await stepContext.PromptAsync("feeling", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }, cancellationToken);
         }
-        
-         private async Task<DialogTurnResult> ConfirmationAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            // Get the current profile object from user state.
-            var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
 
-            await stepContext.Context.SendActivityAsync(MessageFactory.Text($"안녕하세요, {userProfile.Name}. 반가워요."), cancellationToken);
-            return await stepContext.PromptAsync("confirmation", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }, cancellationToken);
-        }
         
 
         /// <summary>
