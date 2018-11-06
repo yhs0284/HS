@@ -10,16 +10,6 @@ namespace ChatbotHS
     /// </summary>
     public class CounterState
     {
-        /// <summary>
-        /// Gets or sets whether the user has been welcomed in the conversation.
-        /// </summary>
-        /// <value>The user has been welcomed in the conversation.</value>
-        public bool DidBotWelcomeUser { get; set; } = false;
-
-        public bool DidBotGetAgreement { get; set; } = false;
-
-
         public int TurnCount { get; set; } = 0;
-
     }
 }

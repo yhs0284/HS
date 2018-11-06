@@ -12,5 +12,7 @@ namespace ChatbotHS
         public string FeelingIntent { get; set; }
 
         public int SuicidalRisk = 0;
+
+        public string Frequency { get; set; }
     }
 }
