@@ -3,12 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.AI.Luis;
 using Microsoft.Bot.Builder.Dialogs;
+using Microsoft.Bot.Connector;
 using Microsoft.Bot.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Recognizers.Text;
@@ -270,7 +273,7 @@ namespace CounselingChatBot
             var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
 
             await stepContext.Context.SendActivityAsync(MessageFactory.Text($"안녕하세요, {userProfile.Name}. 반가워요."), cancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);`
             return await stepContext.PromptAsync("feeling", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }, cancellationToken);
         }
         
@@ -313,7 +316,6 @@ namespace CounselingChatBot
             {
                 await stepContext.Context.SendActivityAsync("조금 더 정확한 감정을 표현해줄 수 있을까요?");
                 return await stepContext.ReplaceDialogAsync(Dialogs.ConfirmationAsync, null, cancellationToken);
-                
             }
         }
 
@@ -544,14 +546,49 @@ namespace CounselingChatBot
             // Get the current profile object from user state.
             var userProfile = await _accessors.UserProfile.GetAsync(stepContext.Context, () => new UserProfile(), cancellationToken);
 
-            if (userProfile.SuicidalRisk > 5)
+            // 자살위험도에 따른 위험군 분류
+            if (userProfile.SuicidalRisk > 5 && userProfile.SuicidalRisk < 20)
             {
+                var reply = stepContext.Context.Activity.CreateReply();
+                var card = new HeroCard
+                {
+                    Buttons = new List<CardAction>()
+                    {
+                        new CardAction(ActionTypes.Call, title: "청소년 상담 전화", value: "tel:" + "1388"),
+                    },
+                };
+
+                reply.Attachments = new List<Attachment>() { card.ToAttachment() };
+
                 await stepContext.Context.SendActivityAsync(HighRiskText);
+                await stepContext.Context.SendActivityAsync(reply, cancellationToken);
+
+
+                return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
+            }
+            else if (userProfile.SuicidalRisk < 6 && userProfile.SuicidalRisk > -2)
+            {
+                var reply = stepContext.Context.Activity.CreateReply();
+                var card = new HeroCard
+                {
+                    Buttons = new List<CardAction>()
+                    {
+                        new CardAction(ActionTypes.OpenUrl, title: "Beck 우울 척도 (BDI)", value: "http://www.xn--4s4by04a.net/selfdiagnosis/bdi.html"),
+                        new CardAction(ActionTypes.OpenUrl, title: "Beck 자살생각 척도 (SSI)", value: "http://www.bsmhc.com/04/01c.php"),
+                    },
+                };
+
+                reply.Attachments = new List<Attachment>() { card.ToAttachment() };
+
+                await stepContext.Context.SendActivityAsync(LowRiskText);
+                await stepContext.Context.SendActivityAsync(reply, cancellationToken);
+
                 return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
             }
             else
             {
-                await stepContext.Context.SendActivityAsync(LowRiskText);
+                await stepContext.Context.SendActivityAsync(ErrorText, cancellationToken: cancellationToken);
+                // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
                 return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
             }
         }
