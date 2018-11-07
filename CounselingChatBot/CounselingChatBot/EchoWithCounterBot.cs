@@ -84,7 +84,7 @@ namespace CounselingChatBot
                 RelationshipAsync,
                 FrequencyofFeelingAsync,
                 PlanSuicideAsync,
-                TrySuicideAsync,               
+                TrySuicideAsync,
                 BeforeResultAsync,
                 ResultAsync,
             };
@@ -258,7 +258,6 @@ namespace CounselingChatBot
             // We can send messages to the user at any point in the WaterfallStep.
             await stepContext.Context.SendActivityAsync(MessageFactory.Text($"안녕하세요, {userProfile.Name}. 반가워요."), cancellationToken);        
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-
             // WaterfallStep always finishes with the end of the Waterfall or with another dialog; here it is a Prompt Dialog.
             return await stepContext.PromptAsync("feeling", new PromptOptions { Prompt = MessageFactory.Text("요즘 기분은 어때요?") }, cancellationToken);
         }
@@ -314,6 +313,7 @@ namespace CounselingChatBot
             {
                 await stepContext.Context.SendActivityAsync("조금 더 정확한 감정을 표현해줄 수 있을까요?");
                 return await stepContext.ReplaceDialogAsync(Dialogs.ConfirmationAsync, null, cancellationToken);
+                
             }
         }
 
@@ -398,7 +398,7 @@ namespace CounselingChatBot
                 userProfile.SuicidalRisk += 2;
                 await stepContext.Context.SendActivityAsync("혼자서 고민하고 있었군요. 이제 제가 도와드릴게요.");
             }
-            else if (strIntent == "Pfeeling" && (dblIntentScore > 0.70))
+            else if (strIntent == "WithOther" && (dblIntentScore > 0.70))
             {
                 userProfile.SuicidalRisk -= 1;
                 await stepContext.Context.SendActivityAsync("타인에게 털어 놓을 수 있다는 건 좋은 현상이에요.");
